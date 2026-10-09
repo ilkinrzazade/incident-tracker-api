@@ -1,4 +1,6 @@
 from rest_framework import viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from .models import Event, Incident
 from .serializers import EventSerializer, IncidentSerializer
@@ -30,3 +32,13 @@ class IncidentViewSet(viewsets.ModelViewSet):
         if severity:
             queryset = queryset.filter(severity=severity)
         return queryset
+
+    @action(detail=True, methods=["post"], url_path="status")
+    def change_status(self, request, pk=None):
+        incident = self.get_object()
+        serializer = self.get_serializer(
+            incident, data={"status": request.data.get("status")}, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

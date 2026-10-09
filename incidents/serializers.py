@@ -22,3 +22,14 @@ class IncidentSerializer(serializers.ModelSerializer):
             "events", "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_status(self, value):
+        if self.instance is None:
+            if value != Incident.Status.OPEN:
+                raise serializers.ValidationError("New incidents must start as 'open'.")
+        elif value != self.instance.status:
+            if not self.instance.can_transition_to(value):
+                raise serializers.ValidationError(
+                    f"Cannot change status from '{self.instance.status}' to '{value}'."
+                )
+        return value

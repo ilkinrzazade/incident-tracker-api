@@ -30,6 +30,12 @@ class Incident(models.Model):
         INVESTIGATING = "investigating", "Investigating"
         RESOLVED = "resolved", "Resolved"
 
+    ALLOWED_TRANSITIONS = {
+        Status.OPEN: [Status.INVESTIGATING],
+        Status.INVESTIGATING: [Status.OPEN, Status.RESOLVED],
+        Status.RESOLVED: [],
+    }
+
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     status = models.CharField(
@@ -44,6 +50,9 @@ class Incident(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def can_transition_to(self, new_status):
+        return new_status in self.ALLOWED_TRANSITIONS[self.status]
 
     def __str__(self):
         return f"{self.title} [{self.status}]"
