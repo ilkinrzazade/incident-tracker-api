@@ -1,6 +1,10 @@
+from django.db.models import Count
+from django.utils.dateparse import parse_date
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Event, Incident
 from .serializers import EventSerializer, IncidentSerializer
@@ -42,3 +46,61 @@ class IncidentViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ReportSummaryView(APIView):
+    def _get_date(self, request, name):
+        value = request.query_params.get(name)
+        if not value:
+            return None
+        try:
+            parsed = parse_date(value)
+        except ValueError:
+            parsed = None
+        if parsed is None:
+            raise ValidationError({name: "Use YYYY-MM-DD format."})
+        return parsed
+
+    def get(self, request):
+        date_from = self._get_date(request, "date_from")
+        date_to = self._get_date(request, "date_to")
+
+        if date_from and date_to and date_from > date_to:
+            raise ValidationError({"date_from": "date_from must not be after date_to."})
+
+        events = Event.objects.all()
+        incidents = Incident.objects.all()
+        if date_from:
+            events = events.filter(created_at__date__gte=date_from)
+            incidents = incidents.filter(created_at__date__gte=date_from)
+        if date_to:
+            events = events.filter(created_at__date__lte=date_to)
+            incidents = incidents.filter(created_at__date__lte=date_to)
+
+        by_severity = (
+            events.values("severity")
+            .annotate(count=Count("id"))
+            .order_by("-count", "severity")
+        )
+        top_event_types = (
+            events.values("event_type")
+            .annotate(count=Count("id"))
+            .order_by("-count", "event_type")[:5]
+        )
+        incidents_by_status = (
+            incidents.values("status")
+            .annotate(count=Count("id"))
+            .order_by("-count", "status")
+        )
+
+        return Response(
+            {
+                "date_from": date_from,
+                "date_to": date_to,
+                "total_events": events.count(),
+                "events_by_severity": list(by_severity),
+                "top_event_types": list(top_event_types),
+                "total_incidents": incidents.count(),
+                "incidents_by_status": list(incidents_by_status),
+            }
+        )
